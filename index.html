@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Trajectory Graph Visualization</title>
+
+<script src="https://d3js.org/d3.v7.min.js"></script>
+
+<style>
+
+body {
+    margin: 0;
+    background: #111;
+    overflow: auto;
+    font-family: Arial, sans-serif;
+}
+
+svg {
+    width: 7000px;
+    height: 1800px;
+    background: #111;
+}
+
+.axis text {
+    fill: white;
+    font-size: 12px;
+}
+
+.axis line,
+.axis path {
+    stroke: white;
+}
+
+#tooltip {
+    position: absolute;
+    background: rgba(0,0,0,0.9);
+    color: white;
+    padding: 10px;
+    border-radius: 6px;
+    font-size: 14px;
+    pointer-events: none;
+    opacity: 0;
+    border: 1px solid white;
+}
+
+.title {
+    fill: white;
+    font-size: 24px;
+    font-weight: bold;
+}
+
+.link {
+    stroke-width: 1.5px;
+    opacity: 0.45;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div id="tooltip"></div>
+
+<svg></svg>
+
+<script>
+
+const svg = d3.select("svg");
+
+const tooltip = d3.select("#tooltip");
+
+const color = d3.scaleOrdinal(d3.schemeCategory10);
+
+const margin = {
+    top: 100,
+    right: 100,
+    bottom: 100,
+    left: 100
+};
+
+const graphGroup = svg.append("g");
+
+svg.call(
+    d3.zoom()
+        .scaleExtent([0.5, 10])
+        .on("zoom", (event) => {
+            graphGroup.attr("transform", event.transform);
+        })
+);
+
+d3.json("graph.json").then(graph => {
+
+    const nodeMap = {};
+
+    graph.nodes.forEach(d => {
+        nodeMap[d.id] = d;
+    });
+
+    // =====================================
+    // SCALES
+    // =====================================
+
+    const frames = graph.nodes.map(d => d.frame);
+
+    const ys = graph.nodes.map(d => d.y);
+
+    const xScale = d3.scaleLinear()
+        .domain([d3.min(frames), d3.max(frames)])
+        .range([margin.left, 6500]);
+
+    const yScale = d3.scaleLinear()
+        .domain([d3.min(ys), d3.max(ys)])
+        .range([1500, margin.top]);
+
+    // =====================================
+    // TITLE
+    // =====================================
+
+    graphGroup.append("text")
+        .attr("class", "title")
+        .attr("x", 2500)
+        .attr("y", 50)
+        .text("Trajectory Graph With Face Thumbnails");
+
+    // =====================================
+    // AXIS
+    // =====================================
+
+    const xAxis = d3.axisBottom(xScale);
+
+    graphGroup.append("g")
+        .attr("class", "axis")
+        .attr("transform", `translate(0,1600)`)
+        .call(xAxis);
+
+    graphGroup.append("text")
+        .attr("x", 3200)
+        .attr("y", 1670)
+        .attr("fill", "white")
+        .attr("font-size", "18px")
+        .text("Frame Number");
+
+    // =====================================
+    // DRAW LINKS FIRST
+    // =====================================
+
+    graphGroup.selectAll(".link")
+        .data(graph.links)
+        .enter()
+        .append("line")
+
+        .attr("class", "link")
+
+        .attr("x1", d => xScale(nodeMap[d.source].frame))
+        .attr("y1", d => yScale(nodeMap[d.source].y))
+
+        .attr("x2", d => xScale(nodeMap[d.target].frame))
+        .attr("y2", d => yScale(nodeMap[d.target].y))
+
+        .attr("stroke", d => color(d.track_id));
+
+    // =====================================
+    // DRAW ALL FACE THUMBNAILS
+    // =====================================
+
+    const thumbGroup = graphGroup.selectAll(".thumb")
+        .data(graph.nodes)
+        .enter()
+        .append("g");
+
+    // -------------------------------------
+    // FACE IMAGE
+    // -------------------------------------
+
+    thumbGroup.append("image")
+
+        .attr("href", d => d.image)
+
+        .attr("x", d => xScale(d.frame) - 12)
+
+        .attr("y", d => yScale(d.y) - 12)
+
+        .attr("width", 24)
+
+        .attr("height", 24)
+
+        .on("mouseover", function(event, d) {
+
+            tooltip
+                .style("opacity", 1)
+                .html(`
+                    <b>Track ID:</b> ${d.track_id}<br>
+                    <b>Frame:</b> ${d.frame}
+                `);
+        })
+
+        .on("mousemove", function(event) {
+
+            tooltip
+                .style("left", (event.pageX + 15) + "px")
+                .style("top", (event.pageY + 15) + "px");
+        })
+
+        .on("mouseout", function() {
+
+            tooltip.style("opacity", 0);
+        });
+
+    // -------------------------------------
+    // BORDER
+    // -------------------------------------
+
+    thumbGroup.append("rect")
+
+        .attr("x", d => xScale(d.frame) - 12)
+
+        .attr("y", d => yScale(d.y) - 12)
+
+        .attr("width", 24)
+
+        .attr("height", 24)
+
+        .attr("fill", "none")
+
+        .attr("stroke", d => color(d.track_id))
+
+        .attr("stroke-width", 1.5);
+
+    // =====================================
+    // LABELS
+    // =====================================
+
+    const firstNodes = {};
+
+    graph.nodes.forEach(d => {
+
+        if (!(d.track_id in firstNodes)) {
+
+            firstNodes[d.track_id] = d;
+        }
+    });
+
+    graphGroup.selectAll(".track-label")
+        .data(Object.values(firstNodes))
+        .enter()
+
+        .append("text")
+
+        .attr("x", d => xScale(d.frame) - 60)
+
+        .attr("y", d => yScale(d.y) - 25)
+
+        .attr("fill", "white")
+
+        .attr("font-size", "22px")
+
+        .attr("font-weight", "bold")
+
+        .text(d => "ID " + d.track_id);
+
+});
+
+</script>
+
+</body>
+
+</html>
